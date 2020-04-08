@@ -32,7 +32,7 @@ logger = get_logger()
 
 class Worker(QThread):
 
-    update_signal = pyqtSignal()
+    update_signal = pyqtSignal(dict)
 
     def __init__(self):
         super().__init__()
@@ -62,30 +62,37 @@ class Worker(QThread):
             global stop_flag
             if stop_flag == False:
                stop_flag = True
-               self.create_thread(self.tot_run)
-               self.update_signal.emit()
+               self.result = {}
+               ret = self.create_thread(self.tot_run)
+               if ret:
+                    self.update_signal.emit(self.result)
             self.msleep(1000)
 
     def create_thread(self, tot_run):
         logger.debug('create_thread tot {}' .format(tot_run))
-        mok = tot_run // self.per_run
-        nam = tot_run % self.per_run
-        r= 0
-        self.result = {}
-        for j in range(1, mok+1):
-            start = r
-            end = r + self.per_run
-            self.run_thread(start=r, end=end)
-            if r >= tot_run:
-                break
-            r += self.per_run
-        if r <= tot_run:
-            self.run_thread(start=r, end=r+nam)
+        try:
+            mok = tot_run // self.per_run
+            nam = tot_run % self.per_run
+            r= 0
+            self.result = {}
+            for j in range(1, mok+1):
+                start = r
+                end = r + self.per_run
+                self.run_thread(start=r, end=end)
+                if r >= tot_run:
+                    break
+                r += self.per_run
+            if r <= tot_run:
+                self.run_thread(start=r, end=r+nam)
 
-        for k, v in self.result.items():
-            print(k, ' :', v)
+            self.user_confirm = False
+            return True
 
-        self.user_confirm = False
+        except Exception as ex:
+            logger.debug('create_thread fail %s' %ex)
+            self.user_confirm = False
+            return False
+
 
     def run_thread(self, start, end):
         logger.debug("run thread {} ~ {}" .format(start, end))
@@ -126,9 +133,17 @@ class MyWindow(QMainWindow, gui_form):
         self.worker.update_signal.connect(self.display_result)
         self.worker.start()
 
-    def display_result(self):
+    @pyqtSlot(dict)
+    def display_result(self, data):
         logger.debug('===>display_result')
-        self.user_confirm = False
+
+        try:
+            for k, v in data.items():
+                print(k, ' :', v)
+            self.user_confirm = False
+
+        except Exception as ex:
+            logger.debug('display_result fail %s' %ex)
 
     def MyDialgo(self):
 
