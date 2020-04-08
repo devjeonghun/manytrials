@@ -29,6 +29,7 @@ class Bithumb(object):
         self.exchange_rate = 1100
         self.targetBalance = 0
         self.baseBalance   = 0
+        self.default_currency = 'KRW'
 
         self.targetLast    = []
         self.baseLast      = []
@@ -126,30 +127,32 @@ class Bithumb(object):
     def infoticker(self, market):  # latest transaction info
         return self.query('ticker', {'market': market})
 
-    def orders(self, order_id, type, count, after, currency): # 회원의 판매, 구매 거래 주문 등록 또는 진행중인 거래
+
+    def orders(self, order_id, type, currency): # 회원의 판매, 구매 거래 주문 등록 또는 진행중인 거래
         params = {
             "order_id": order_id,
             "type": type,
-            "currency": currency
+            "order_currency": currency,
+            "payment_currency" : self.default_currency,
         }
         return self.query('/info/orders/', params)
-        # return self.query('orders', {'UUID': UUID, 'type':type, 'count':count, 'after':after, 'currency':currency})
 
-    def order_detail(self, order_id, type, currency): # 회원의 판/구매 체결 내역
+    # executed
+    def order_detail(self, order_id, type, order_currency): # 회원의 판/구매 체결 내역
         params = {
                     "order_id"  : order_id,
                     "type"      : type,
-                    "currency"  : currency
+                    "order_currency"  : order_currency,
                     }
         return self.query('/info/order_detail/', params)
 
     # trade api
-    def place(self, currency, payment_currency,units,price,type):
+    def place(self, currency, payment_currency, units, price, type):
         params = {
                     "order_currency"    : currency,
                     "payment_currency"  : payment_currency,
                     "units"             : units,
-                    "price"             : int(price),
+                    "price"             : price,
                     "type"              : type
         }
         return self.query('/trade/place/', params)
@@ -172,7 +175,7 @@ class Bithumb(object):
         params = {
                     'type'    :type,
                     'order_id': order_id,
-                    'currency': currency
+                    'order_currency': currency,
                     }
         return self.query('/trade/cancel/', params)
 
@@ -247,13 +250,12 @@ class Bithumb(object):
         count = 0
         while True:
             count += 1
-            resp = self.order_detail(orderNumber, type, currency)
-            # resp = self.orders(orderNumber, type, number, after, currency)
-            print("bith: response %s" % resp)
-            if (resp["status"] == "0000"):  #trading success
-               units_traded = (float)(resp["data"][0]["units_traded"])
-               # print("units_traded %.4f" % units_traded)
-               if (units_traded == qty):
+            resp = self.orders(orderNumber, type, currency)
+            print("bithumb: response %s" % resp)
+            if resp["status"] == "0000":  # normal operation
+               units_traded = float(resp["data"][0]["units"]) - float(resp["data"][0]["units_remaining"])
+               print("units_traded %.4f" % units_traded)
+               if units_traded == qty:
                    return "GO", units_traded
                elif count < 10:  #waiting trading complete
                    print("loop %d" % count)
@@ -262,16 +264,18 @@ class Bithumb(object):
                    resp = self.cancel(orderNumber, type, currency)
                    print("ko %s" % resp)
                    return "NG", units_traded
-            elif resp["status"] == "5600":   # maybe pending
-                if count < 10:               # wait to start trading
-                    print("loop 5600 %d" % count)
-                    continue
-                else:                        # too long to wait to start trading
-                    resp = self.cancel(orderNumber, type, currency)
-                    print("bith: trading not exist. cancel %s" % resp)
-                    return "NG", 0
+            elif resp["status"] == "5600":   # order_id does not exist, ie completed
+                units_traded = qty
+                return "GO", units_traded
+                # old version style
+                # if count < 10:               # wait to start trading
+                #     print("loop 5600 %d" % count)
+                #     continue
+                # else:                        # too long to wait to start trading
+                #     resp = self.cancel(orderNumber, type, currency)
+                #     print("bith: trading not exist. cancel %s" % resp)
+                #     return "NG", 0
             else:   # unacceptable error
                 resp = self.cancel(orderNumber, type, currency)
-                print("bith: missed order")
+                print("bithumb: missed order")
                 return "NG", 0
-
