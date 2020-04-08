@@ -16,8 +16,6 @@ gui_form = uic.loadUiType('maniBot.ui')[0]
 
 stop_flag = True
 
-logger = get_logger()
-
 def get_logger():
     logger = logging.getLogger("Thread Example")
     logger.setLevel(logging.DEBUG)
@@ -30,14 +28,14 @@ def get_logger():
     logger.addHandler(fh)
     return logger
 
+logger = get_logger()
+
 class Worker(QThread):
 
     update_signal = pyqtSignal()
 
     def __init__(self):
         super().__init__()
-        self.executor = ThreadPoolExecutor(max_workers=10)
-        self.result = {}
 
         # Load Config File
         config = ConfigParser()
@@ -45,30 +43,42 @@ class Worker(QThread):
 
         connect_key = config.get('ArbBot', 'bithumbKey')
         secret_key = config.get('ArbBot', 'bithumbSecret')
+        max_workers = int(config.get('ArbBot', 'MAX_WORKERS'))
+        per_run     = int(config.get('ArbBot', 'PER_RUN'))
+
         self.bot = Bithumb(connect_key, secret_key)
+
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.result = {}
+
+        self.per_run = per_run
+        self.tot_run = 0
+
+    def set_run(self, tot_run):
+        self.tot_run = tot_run
 
     def run(self):
         while True:
             global stop_flag
             if stop_flag == False:
                stop_flag = True
-               self.create_thread(5, 3)
+               self.create_thread(self.tot_run)
                self.update_signal.emit()
-            self.msleep(5000)
+            self.msleep(1000)
 
-    def create_thread(self, tot_run, per_run):
-        logger.debug('create_thread tot {} per {}' .format(tot_run, per_run))
-        mok = tot_run // per_run
-        nam = tot_run % per_run
+    def create_thread(self, tot_run):
+        logger.debug('create_thread tot {}' .format(tot_run))
+        mok = tot_run // self.per_run
+        nam = tot_run % self.per_run
         r= 0
         self.result = {}
         for j in range(1, mok+1):
             start = r
-            end = r + per_run
+            end = r + self.per_run
             self.run_thread(start=r, end=end)
             if r >= tot_run:
                 break
-            r += per_run
+            r += self.per_run
         if r <= tot_run:
             self.run_thread(start=r, end=r+nam)
 
@@ -109,6 +119,8 @@ class MyWindow(QMainWindow, gui_form):
         self.result = []
 
         self.user_confirm = False
+        self.tot_run = 0
+        self.per_run = 5
 
         self.worker = Worker()
         self.worker.update_signal.connect(self.display_result)
@@ -135,20 +147,21 @@ class MyWindow(QMainWindow, gui_form):
 
         price = self.price_lineEdit.text()
         qty   = self.qty_lineEdit.text()
-        count = self.count_lineEdit.text()
+        tot_run = self.count_lineEdit.text()
         # coin  = self.coin_lineEdit.text()
         coin = 'DAC'
 
-        if price == '' or qty == '' or count == '' or coin == '':
+        if price == '' or qty == '' or tot_run == '' or coin == '':
             print("Type in parameters")
             self.textBrowser.setText('메시지 : ' + '값을 입력해 주세요')
             return "Error"
 
         self.price = float(price)
         self.qty   = float(qty)
-        self.count = int(count)
+        self.tot_run = int(tot_run)
 
-        logger.debug("{} @ {} for {}" .format(self.qty, self.price, self.count))
+        self.worker.set_run(self.tot_run)
+        logger.debug("{} @ {} for {}" .format(self.qty, self.price, self.tot_run))
         # display on pannel
 
         # confirm for user input
