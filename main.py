@@ -4,8 +4,6 @@ from PyQt5.QtWidgets import *
 from PyQt5 import uic
 from PyQt5.QtCore import *
 
-# import config
-# import threading
 import sys
 from configparser import ConfigParser
 import logging
@@ -15,6 +13,87 @@ from bithumb import Bithumb
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 gui_form = uic.loadUiType('maniBot.ui')[0]
+
+stop_flag = True
+
+logger = get_logger()
+
+def get_logger():
+    logger = logging.getLogger("Thread Example")
+    logger.setLevel(logging.DEBUG)
+    # fh = logging.FileHandler("threading.log") #로그 파일 출력
+    fh = logging.StreamHandler()
+    fmt = '%(asctime)s - %(threadName)s - %(levelname)s - %(message)s'
+    formatter = logging.Formatter(fmt)
+    fh.setFormatter(formatter)
+
+    logger.addHandler(fh)
+    return logger
+
+class Worker(QThread):
+
+    update_signal = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.executor = ThreadPoolExecutor(max_workers=10)
+        self.result = {}
+
+        # Load Config File
+        config = ConfigParser()
+        config.read('trading.conf')
+
+        connect_key = config.get('ArbBot', 'bithumbKey')
+        secret_key = config.get('ArbBot', 'bithumbSecret')
+        self.bot = Bithumb(connect_key, secret_key)
+
+    def run(self):
+        while True:
+            global stop_flag
+            if stop_flag == False:
+               stop_flag = True
+               self.create_thread(5, 3)
+               self.update_signal.emit()
+            self.msleep(5000)
+
+    def create_thread(self, tot_run, per_run):
+        logger.debug('create_thread tot {} per {}' .format(tot_run, per_run))
+        mok = tot_run // per_run
+        nam = tot_run % per_run
+        r= 0
+        self.result = {}
+        for j in range(1, mok+1):
+            start = r
+            end = r + per_run
+            self.run_thread(start=r, end=end)
+            if r >= tot_run:
+                break
+            r += per_run
+        if r <= tot_run:
+            self.run_thread(start=r, end=r+nam)
+
+        for k, v in self.result.items():
+            print(k, ' :', v)
+
+        self.user_confirm = False
+
+    def run_thread(self, start, end):
+        logger.debug("run thread {} ~ {}" .format(start, end))
+        futures = {self.executor.submit(self.seek_balance, i): i for i in range(start, end)}
+        for future in as_completed(futures):
+            try:
+                data = future.result()
+                # print(data)
+            except Exception as ex:
+                self.result[future] = 'Fail'
+            else:
+                self.result[future] = data
+
+    def seek_balance(self, number):
+        logger.debug('execute function executing')
+        result = self.bot.balance('ETH')
+        logger.debug('execute function ended with: {}'.format(number))
+        return result
 
 class MyWindow(QMainWindow, gui_form):
 
@@ -26,31 +105,18 @@ class MyWindow(QMainWindow, gui_form):
         self.mode  = 'sell'
         self.auto  = True
 
-        self.logger = self.get_logger()
+        # logger = self.get_logger()
         self.result = []
-        self.executor = ThreadPoolExecutor(max_workers=10)
-
-        # Load Config File
-        config = ConfigParser()
-        config.read('trading.conf')
-
-        connect_key = config.get('ArbBot', 'bithumbKey')
-        secret_key = config.get('ArbBot', 'bithumbSecret')
-        self.bot = Bithumb(connect_key, secret_key)
 
         self.user_confirm = False
 
-    def get_logger(self):
-        logger = logging.getLogger("Thread Example")
-        logger.setLevel(logging.DEBUG)
-        # fh = logging.FileHandler("threading.log") #로그 파일 출력
-        fh = logging.StreamHandler()
-        fmt = '%(asctime)s - %(threadName)s - %(levelname)s - %(message)s'
-        formatter = logging.Formatter(fmt)
-        fh.setFormatter(formatter)
+        self.worker = Worker()
+        self.worker.update_signal.connect(self.display_result)
+        self.worker.start()
 
-        logger.addHandler(fh)
-        return logger
+    def display_result(self):
+        logger.debug('===>display_result')
+        self.user_confirm = False
 
     def MyDialgo(self):
 
@@ -82,16 +148,19 @@ class MyWindow(QMainWindow, gui_form):
         self.qty   = float(qty)
         self.count = int(count)
 
-        self.logger.debug("{} @ {} for {}" .format(self.qty, self.price, self.count))
+        logger.debug("{} @ {} for {}" .format(self.qty, self.price, self.count))
         # display on pannel
 
         # confirm for user input
         self.user_confirm = True
 
     def action_cmd(self):
-        self.logger.debug("action_orders_cmd")
+        logger.debug("action_orders_cmd")
         if self.user_confirm :
-            self.create_thread(self.count, 5)
+            # self.create_thread(self.count, 5)
+            global stop_flag
+            print('stop flag ' , stop_flag)
+            stop_flag = False
 
     def refresh_cmd(self):
         pass
@@ -112,44 +181,6 @@ class MyWindow(QMainWindow, gui_form):
         else:
             self.auto = False
 
-    def create_thread(self, tot_run, per_run):
-        self.logger.debug('create_thread tot {} per {}' .format(tot_run, per_run))
-        mok = tot_run // per_run
-        nam = tot_run % per_run
-        r= 0
-        self.result = {}
-        for j in range(1, mok+1):
-            start = r
-            end = r + per_run
-            self.run_thread(start=r, end=end)
-            if r >= tot_run:
-                break
-            r += per_run
-        if r <= tot_run:
-            self.run_thread(start=r, end=r+nam)
-
-        for k, v in self.result.items():
-            print(k, ' :', v)
-
-        self.user_confirm = False
-
-    def run_thread(self, start, end):
-        self.logger.debug("run thread {} ~ {}" .format(start, end))
-        futures = {self.executor.submit(self.seek_balance, i): i for i in range(start, end)}
-        for future in as_completed(futures):
-            try:
-                data = future.result()
-                # print(data)
-            except Exception as ex:
-                self.result[future] = 'Fail'
-            else:
-                self.result[future] = data
-
-    def seek_balance(self, number):
-        self.logger.debug('execute function executing')
-        result = self.bot.balance('ETH')
-        self.logger.debug('execute function ended with: {}'.format(number))
-        return result
 
 def main_QApp():
     app = QApplication(sys.argv)
