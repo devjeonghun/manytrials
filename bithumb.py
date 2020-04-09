@@ -38,6 +38,7 @@ class Bithumb(object):
         self.bidprice = 0
         self.askqty   = 0
         self.bidqty   = 0
+        self.ticker   = 0
         self.BCH      = 0.001  #min tradable volume
         self.BTC      = 0.0001
         self.ETH      = 0.001
@@ -101,7 +102,7 @@ class Bithumb(object):
         ret = urllib.request.urlopen(urllib.request.Request(url), timeout=2)
         return json.loads(ret.read())
 
-    def ticker(self, currency):
+    def tickerinfo(self, currency):
         return self.public_query('/public/ticker/' + currency)
 
     def orderbook(self, currency):
@@ -161,14 +162,14 @@ class Bithumb(object):
         payment_currency = "KRW"
         response = self.place(currency, payment_currency, units, price, "bid")
         status = "OK" if response["status"] == "0000" else "ERROR"
-        orderNumber = response.get("order_id", "orderID is not key")
+        orderNumber = response.get("order_id", "_")
         return status, orderNumber, response
 
     def sell(self, currency, units, price):
         payment_currency = "KRW"
         response = self.place(currency, payment_currency, units, price, "ask")
         status = "OK" if response["status"] == "0000" else "ERROR"
-        orderNumber = response.get("order_id", "orderID is not key")
+        orderNumber = response.get("order_id", "_")
         return status, orderNumber, response
 
     def cancel(self, order_id, type, currency):
@@ -208,9 +209,8 @@ class Bithumb(object):
         return float(marketinfo["data"][0]["price"])
 
     def get_ticker_info(self, currency):
-        marketinfo = self.ticker(currency)
-        self.askprice = float(marketinfo["data"]["sell_price"])
-        self.bidprice = float(marketinfo["data"]["buy_price"])
+        ticker = self.tickerinfo(currency)
+        self.ticker = float(ticker["data"]["closing_price"])
 
     def get_order_info(self, currency):
         marketinfo = self.orderbook(currency)
