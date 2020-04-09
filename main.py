@@ -17,7 +17,7 @@ gui_form = uic.loadUiType('maniBot.ui')[0]
 stop_flag = True
 
 def get_logger():
-    logger = logging.getLogger("Thread Example")
+    logger = logging.getLogger("__name__")
     logger.setLevel(logging.DEBUG)
     # fh = logging.FileHandler("threading.log") #로그 파일 출력
     fh = logging.StreamHandler()
@@ -139,7 +139,9 @@ class MyWindow(QMainWindow, gui_form):
 
         try:
             for k, v in data.items():
-                print(k, ' :', v)
+                # message = "{} : {}" .format(k, v)
+                message = "{}" .format(v)
+                self.textBrowser.append(message)
             self.user_confirm = False
 
         except Exception as ex:
