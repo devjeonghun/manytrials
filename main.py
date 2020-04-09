@@ -19,14 +19,21 @@ gui_form = uic.loadUiType('maniBot2.ui')[0]
 stop_flag = True
 
 def get_logger():
-    logger = logging.getLogger("__name__")
+    logger = logging.getLogger("maniBot")
     logger.setLevel(logging.DEBUG)
-    # fh = logging.FileHandler("threading.log") #로그 파일 출력
-    fh = logging.StreamHandler()
-    fmt = '%(asctime)s - %(threadName)s - %(levelname)s - %(message)s'
-    formatter = logging.Formatter(fmt)
-    fh.setFormatter(formatter)
 
+    ch = logging.StreamHandler()
+
+    fh = logging.FileHandler('user.log', mode='a', encoding=None, delay=False)
+    fh.setLevel(logging.DEBUG)
+    # create formatter
+    formatter = logging.Formatter("%(asctime)s %(filename)s %(lineno)s %(message)s")
+    formatter_fh = logging.Formatter("%(asctime)s %(filename)s %(lineno)s %(message)s")
+    # add formatter to ch
+    ch.setFormatter(formatter)
+    fh.setFormatter(formatter_fh)
+
+    logger.addHandler(ch)
     logger.addHandler(fh)
     return logger
 
