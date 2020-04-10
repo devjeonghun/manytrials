@@ -212,6 +212,7 @@ class Worker(QThread):
         else:
             return 0
 
+
 class MyWindow(QMainWindow, gui_form):
 
     def __init__(self):
