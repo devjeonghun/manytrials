@@ -162,14 +162,14 @@ class Bithumb(object):
         payment_currency = "KRW"
         response = self.place(currency, payment_currency, units, price, "bid")
         status = "OK" if response["status"] == "0000" else "ERROR"
-        orderNumber = response.get("order_id", "_")
+        orderNumber = response.get("order_id", "")
         return status, orderNumber, response
 
     def sell(self, currency, units, price):
         payment_currency = "KRW"
         response = self.place(currency, payment_currency, units, price, "ask")
         status = "OK" if response["status"] == "0000" else "ERROR"
-        orderNumber = response.get("order_id", "_")
+        orderNumber = response.get("order_id", "")
         return status, orderNumber, response
 
     def cancel(self, order_id, type, currency):
