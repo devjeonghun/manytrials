@@ -9,6 +9,8 @@ from configparser import ConfigParser
 import logging
 import timeit
 import math
+import time
+import random
 
 from bithumb import Bithumb
 
@@ -77,7 +79,6 @@ class Worker(QThread):
         self.success = 0  # 성공률
 
         self.qty  = 0
-        self.mid_price = 0
 
 
     def set_run(self, price, qty, tot_run, mode):
@@ -158,21 +159,26 @@ class Worker(QThread):
 
     def sellnbuy(self, number):
         try:
-            status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.mid_price)
-            m1 = 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
-            status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.mid_price)
-            m2 = 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
-            return m1 + m2
+            status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.price)
+            m = 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
+            time.sleep(0.4)
+            if orderNumber :
+                status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.price)
+                m += 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
+            return m
+
         except Exception as ex:
             logger.debug("sell n buy error %s" %ex)
 
     def buynsell(self, number):
         try:
-            status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.mid_price)
-            m1 = 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
-            status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.mid_price)
-            m2 = 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
-            return m1 + m2
+            status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.price)
+            m = 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
+            time.sleep(0.4)
+            if orderNumber:
+                status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.price)
+                m += 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
+            return m
         except Exception as ex:
             logger.debug("buy n sell error %s" %ex)
 
@@ -192,15 +198,6 @@ class Worker(QThread):
             logger.debug("seek ticker error %s" % ex)
             return 0
 
-    def seek_midprice(self):
-        self.mid_price = self.seek_spread(self.bot.bidprice, self.bot.askprice)
-        if self.mid_price <= 0:
-            logger.debug('No spread : bids_price {} < mid_price {} < asks_price {}'
-                         .format(self.bot.bidprice, self.mid_price, self.bot.askprice))
-            return 0
-        else:
-            return self.mid_price
-
     def seek_spread(self, bid, ask):
         if self.tick_interval == 0.0 :
             return ValueError
@@ -211,6 +208,17 @@ class Worker(QThread):
             return mid_price
         else:
             return 0
+
+    def seek_midprice(self):
+
+        self.seek_orderbook(self.coin)
+        mid_price = self.seek_spread(self.bot.bidprice, self.bot.askprice)
+        if mid_price <= 0:
+            logger.debug('No spread : bids_price {} < mid_price {} < asks_price {}'
+                         .format(self.bot.bidprice, mid_price, self.bot.askprice))
+            return "Wait"
+        else:
+            return mid_price
 
 
 class MyWindow(QMainWindow, gui_form):
@@ -290,7 +298,7 @@ class MyWindow(QMainWindow, gui_form):
         qty   = self.qty_lineEdit.text()
         tot_run = self.count_lineEdit.text()
 
-        if price == '' or price == 'Invalid' \
+        if price == '' or price == 'Wait' \
                 or qty == '' or tot_run == '' or self.mode == '':
             print("Type in parameters")
             self.textBrowser.setText('입력값을 확인해 주세요')
@@ -300,9 +308,13 @@ class MyWindow(QMainWindow, gui_form):
             self.textBrowser.append('Please select sell or buy prefer mode')
             return "Error"
 
-        self.price = float(price)
-        self.qty   = float(qty)
-        self.tot_run = int(tot_run)
+        try:
+            self.price = float(price)
+            self.qty   = float(qty)
+            self.tot_run = int(tot_run)
+        except Exception as ex:
+            self.textBrowser.setText('입력값을 확인해 주세요')
+            return "Error"
 
         if self.price <= 0 or self.qty <= 0 or self.tot_run <= 0:
             self.textBrowser.setText('입력값을 확인해 주세요')
@@ -341,11 +353,11 @@ class MyWindow(QMainWindow, gui_form):
 
     def autoinput_cmd(self):
         val = self.worker.seek_midprice()
-        if val:
-            self.price_lineEdit.setText("{}" .format(val))
+        if val == "Wait":
+            self.price_lineEdit.setText("{}".format(val))
+            self.textBrowser.append("Please wait. No spread")
         else:
-            self.price_lineEdit.setText("Invalid")
-            self.textBrowser.append("Please check price {}" .format(val))
+            self.price_lineEdit.setText("{}" .format(val))
 
     def delete_logs_cmd(self):
         self.textBrowser.clear()
