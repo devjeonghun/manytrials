@@ -147,7 +147,7 @@ class Worker(QThread):
                 data = future.result()
                 # print(data)
             except Exception as ex:
-                self.result[future] = 'fail'
+                self.result[future] = (0, 'fail')
             else:
                 self.result[future] = data
 
@@ -159,26 +159,37 @@ class Worker(QThread):
 
     def sellnbuy(self, number):
         try:
+            result = 0
             status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.price)
             m = 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
-            time.sleep(0.4)
+            if status == 'OK':
+                result += 1
+            time.sleep(0.5)
             if orderNumber :
                 status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.price)
                 m += 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
-            return m
+                if status == 'OK':
+                    result += 1
+            return (result, m)
 
         except Exception as ex:
             logger.debug("sell n buy error %s" %ex)
 
     def buynsell(self, number):
         try:
+            result = 0
             status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.price)
             m = 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
-            time.sleep(0.4)
+            if status == 'OK':
+                result += 1
+            time.sleep(0.5)
             if orderNumber:
                 status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.price)
                 m += 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
-            return m
+                if status == 'OK':
+                    result += 1
+            return (result, m)
+
         except Exception as ex:
             logger.debug("buy n sell error %s" %ex)
 
@@ -256,18 +267,19 @@ class MyWindow(QMainWindow, gui_form):
         logger.debug('===>display_result')
 
         try:
-            fail = success = 0
+            fail = processed = traded = 0
             result = ''
             for k, v in data.items():
-                if v == 'fail':
+                if v[1] == 'fail':
                     fail += 1
                 else:
-                    success += 1
-                result += "{} \n" .format(v)
+                    processed += 1
+                    traded += v[0]
+                result += "{} \n" .format(v[1])
 
             message = ''
             message += result
-            message += "{} processed / {} requests \n" .format(success, self.tot_run)
+            message += "{} traded - {} processed/{} requested \n" .format(traded, processed, self.tot_run)
             # run_per_sec = self.tot_run / self.worker.runtime
             message += "{:.4f} s runtime \n" .format(self.worker.runtime)
 
