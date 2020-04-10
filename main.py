@@ -55,8 +55,15 @@ class Worker(QThread):
         max_workers = int(config.get('ArbBot', 'MAX_WORKERS'))
         per_run     = int(config.get('ArbBot', 'PER_RUN'))
 
+        self.coin = config.get('ArbBot', 'coin')
         self.dryrun = int(config.get('ArbBot', 'dryrun'))
         self.tick_interval = float(config.get('ArbBot', 'tick_interval'))
+
+        if connect_key and secret_key and max_workers and per_run and self.tick_interval and self.coin:
+            logger.debug("configurations ok")
+        else:
+            logger.debug("Please add info into configurations")
+            raise ValueError
 
         self.bot = Bithumb(connect_key, secret_key)
 
@@ -68,10 +75,6 @@ class Worker(QThread):
 
         self.runtime = 0  # 실행 시간 측정
         self.success = 0  # 성공률
-
-        self.coin = config.get('ArbBot', 'coin')
-        if not self.coin:
-            raise ValueError
 
         self.qty  = 0
         self.mid_price = 0
@@ -154,26 +157,40 @@ class Worker(QThread):
         return result
 
     def sellnbuy(self, number):
-        status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.mid_price)
-        m1 = 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
-        status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.mid_price)
-        m2 = 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
-        return m1 + m2
+        try:
+            status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.mid_price)
+            m1 = 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
+            status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.mid_price)
+            m2 = 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
+            return m1 + m2
+        except Exception as ex:
+            logger.debug("sell n buy error %s" %ex)
 
     def buynsell(self, number):
-        status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.mid_price)
-        m1 = 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
-        status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.mid_price)
-        m2 = 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
-        return m1 + m2
+        try:
+            status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.mid_price)
+            m1 = 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
+            status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.mid_price)
+            m2 = 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
+            return m1 + m2
+        except Exception as ex:
+            logger.debug("buy n sell error %s" %ex)
 
     def seek_orderbook(self, coin):
-        self.bot.get_order_info(coin)
-        return self.bot.askprice, self.bot.bidprice, self.bot.askqty, self.bot.bidqty
+        try:
+            self.bot.get_order_info(coin)
+            return self.bot.askprice, self.bot.bidprice, self.bot.askqty, self.bot.bidqty
+        except Exception as ex:
+            logger.debug("seek orderbook error %s" %ex)
+            return 0, 0, 0, 0
 
     def seek_ticker(self, coin):
-        self.bot.get_ticker_info(coin)
-        return self.bot.ticker
+        try:
+            self.bot.get_ticker_info(coin)
+            return self.bot.ticker
+        except Exception as ex:
+            logger.debug("seek ticker error %s" % ex)
+            return 0
 
     def seek_midprice(self):
         self.mid_price = self.seek_spread(self.bot.bidprice, self.bot.askprice)
@@ -217,11 +234,11 @@ class MyWindow(QMainWindow, gui_form):
         config.read('trading.conf')
 
         self.coin = config.get('ArbBot', 'Coin')
-        if not self.coin:
+        if self.coin:
+            self.orderbook_Label.setText(self.coin)
+        else:
             self.textBrowser.append('Please add coin name in trading.conf file')
             raise ValueError
-        else:
-            self.orderbook_Label.setText(self.coin)
 
         self.MyDialgo()
 
@@ -272,9 +289,10 @@ class MyWindow(QMainWindow, gui_form):
         qty   = self.qty_lineEdit.text()
         tot_run = self.count_lineEdit.text()
 
-        if price == '' or qty == '' or tot_run == '' or self.mode == '':
+        if price == '' or price == 'Invalid' \
+                or qty == '' or tot_run == '' or self.mode == '':
             print("Type in parameters")
-            self.textBrowser.setText('메시지 : ' + '값을 입력해 주세요')
+            self.textBrowser.setText('입력값을 확인해 주세요')
             return "Error"
 
         if not self.mode:
@@ -284,6 +302,10 @@ class MyWindow(QMainWindow, gui_form):
         self.price = float(price)
         self.qty   = float(qty)
         self.tot_run = int(tot_run)
+
+        if self.price <= 0 or self.qty <= 0 or self.tot_run <= 0:
+            self.textBrowser.setText('입력값을 확인해 주세요')
+            return "Error"
 
         self.worker.set_run(self.price, self.qty, self.tot_run, self.mode)
         self.textBrowser.append("{} @ {} in {}" .format(self.qty, self.price, self.tot_run))
