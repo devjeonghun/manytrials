@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-
 from PyQt5.QtWidgets import *
 from PyQt5 import uic
 from PyQt5.QtCore import *
@@ -12,6 +11,7 @@ import math
 import time
 import random
 
+from deadline import isDeadline
 from bithumb import Bithumb
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -137,10 +137,7 @@ class Worker(QThread):
         if self.dryrun:
             futures = {self.executor.submit(self.seek_balance, i): i for i in range(start, end)}
         else:
-            if self.mode == 'sell':
-                futures = {self.executor.submit(self.sellnbuy, i): i for i in range(start, end)}
-            else:
-                futures = {self.executor.submit(self.buynsell, i): i for i in range(start, end)}
+            futures = {self.executor.submit(self.zero_trade, i): i for i in range(start, end)}
 
         for future in as_completed(futures):
             try:
@@ -164,12 +161,13 @@ class Worker(QThread):
             m = 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
             if status == 'OK':
                 result += 1
-            time.sleep(0.5)
+            # time.sleep(0.4)
             if orderNumber :
                 status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.price)
                 m += 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
                 if status == 'OK':
                     result += 1
+            time.sleep(0.4)
             return (result, m)
 
         except Exception as ex:
@@ -182,16 +180,42 @@ class Worker(QThread):
             m = 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
             if status == 'OK':
                 result += 1
-            time.sleep(0.5)
+            # time.sleep(0.4)
             if orderNumber:
                 status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.price)
                 m += 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
                 if status == 'OK':
                     result += 1
+            time.sleep(0.4)
             return (result, m)
 
         except Exception as ex:
             logger.debug("buy n sell error %s" %ex)
+
+
+    def zero_trade(self, number):
+        logger.debug("->execute start %d" %number)
+        try:
+            mod = number % 2
+
+            if mod == 0 : # even
+                if self.mode == 'sell':
+                    ret = self.sellnbuy(number)
+                else:
+                    ret = self.buynsell(number)
+                return ret
+            else:
+                if self.mode == 'sell':
+                    ret = self.buynsell(number)
+                else:
+                    ret = self.sellnbuy(number)
+                return ret
+            logger.debug("<-execute end %d" % number)
+
+        except Exception as ex:
+            logger.debug("sell n buy error %s" %ex)
+            return ('fail', 'fail')
+
 
     def seek_orderbook(self, coin):
         try:
@@ -303,6 +327,18 @@ class MyWindow(QMainWindow, gui_form):
         self.delete_pushButton.clicked.connect(self.delete_logs_cmd)
 
     def action_cmd(self):
+
+        # check deadline
+        check = isDeadline()
+        if check == 'NG':
+            self.textBrowser.setText('사용기간이 만료되었습니다')
+            return "Error"
+        elif check == 'ERROR':
+            self.textBrowser.setText('네트워크를 점검해 주세요')
+            return "Error"
+        else:
+            print('OK to use')
+        # end check deadline
 
         self.user_confirm = False
 
