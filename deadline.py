@@ -5,7 +5,7 @@ url = 'http://worldclockapi.com/api/json/utc/now'
 
 def isDeadline():
 
-    deadline = datetime.datetime(2020, 4, 11)
+    deadline = datetime.datetime(2020, 4, 13)
     print(deadline)
 
     status = 'ERROR'
@@ -30,7 +30,3 @@ def isDeadline():
         return status
     except Exception as ex:
         return status
-
-
-if  __name__ == '__main__' :
-    isDealine()
