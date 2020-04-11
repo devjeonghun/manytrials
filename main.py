@@ -337,7 +337,7 @@ class MyWindow(QMainWindow, gui_form):
             self.textBrowser.setText('네트워크를 점검해 주세요')
             return "Error"
         else:
-            print('OK to use')
+            self.textBrowser.setText('Bot Validation OK')
         # end check deadline
 
         self.user_confirm = False
