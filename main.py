@@ -156,18 +156,19 @@ class Worker(QThread):
 
     def sellnbuy(self, number):
         try:
+            time.sleep(0.01)
             result = 0
             status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.price)
             m = 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
             if status == 'OK':
                 result += 1
-            # time.sleep(0.4)
+            time.sleep(0.01)
             if orderNumber :
                 status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.price)
                 m += 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
                 if status == 'OK':
                     result += 1
-            time.sleep(0.4)
+            # time.sleep(0.4)
             return (result, m)
 
         except Exception as ex:
@@ -175,18 +176,19 @@ class Worker(QThread):
 
     def buynsell(self, number):
         try:
+            time.sleep(0.01)
             result = 0
             status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.price)
             m = 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
             if status == 'OK':
                 result += 1
-            # time.sleep(0.4)
+            time.sleep(0.01)
             if orderNumber:
                 status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.price)
                 m += 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
                 if status == 'OK':
                     result += 1
-            time.sleep(0.4)
+            # time.sleep(0.4)
             return (result, m)
 
         except Exception as ex:
@@ -194,7 +196,7 @@ class Worker(QThread):
 
 
     def zero_trade(self, number):
-        logger.debug("->execute start %d" %number)
+        # logger.debug("->execute start %d" %number)
         try:
             mod = number % 2
 
@@ -210,7 +212,7 @@ class Worker(QThread):
                 else:
                     ret = self.sellnbuy(number)
                 return ret
-            logger.debug("<-execute end %d" % number)
+            # logger.debug("<-execute end %d" % number)
 
         except Exception as ex:
             logger.debug("sell n buy error %s" %ex)
