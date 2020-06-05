@@ -149,12 +149,13 @@ class Worker(QThread):
                 self.result[future] = data
 
     def seek_balance(self, number):
-        logger.debug('execute function executing')
+        logger.debug('->execute function executing {}'.format(number))
         result = self.bot.balance('ETH')
-        logger.debug('execute function ended with: {}'.format(number))
-        return result
+        logger.debug('<-execute function ended with: {}'.format(number))
+        return (result, 'ok')
 
     def sellnbuy(self, number):
+        logger.debug('execute function executing')
         try:
             time.sleep(0.01)
             result = 0
@@ -163,18 +164,14 @@ class Worker(QThread):
             if status == 'OK':
                 result += 1
             time.sleep(0.01)
-            if orderNumber :
-                status, orderNumber, response = self.bot.buy(self.coin, self.qty, self.price)
-                m += 'No.{} buy  {}, orderNumber {}, result {}\n'.format(number, status, orderNumber, response)
-                if status == 'OK':
-                    result += 1
-            # time.sleep(0.4)
+            logger.debug('execute function ended with: {}'.format(number))
             return (result, m)
 
         except Exception as ex:
             logger.debug("sell n buy error %s" %ex)
 
     def buynsell(self, number):
+        logger.debug('execute function executing')
         try:
             time.sleep(0.01)
             result = 0
@@ -183,12 +180,7 @@ class Worker(QThread):
             if status == 'OK':
                 result += 1
             time.sleep(0.01)
-            if orderNumber:
-                status, orderNumber, response = self.bot.sell(self.coin, self.qty, self.price)
-                m += 'No.{} sell {}, orderNumber {}, result {}\n' .format(number, status, orderNumber, response)
-                if status == 'OK':
-                    result += 1
-            # time.sleep(0.4)
+            logger.debug('execute function ended with: {}'.format(number))
             return (result, m)
 
         except Exception as ex:
@@ -217,7 +209,6 @@ class Worker(QThread):
         except Exception as ex:
             logger.debug("sell n buy error %s" %ex)
             return ('fail', 'fail')
-
 
     def seek_orderbook(self, coin):
         try:
