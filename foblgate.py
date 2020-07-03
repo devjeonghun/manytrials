@@ -16,6 +16,7 @@ class Foblgate(object):
         self.id = id
         self.connect_key = api_key
         self.secret_key = api_secret
+        self.mbid = 'hge4014@naver.com'
         self.target = target.upper()
         self.payment = payment.upper()
         self.targetBalance = 0
@@ -60,12 +61,14 @@ class Foblgate(object):
         return False
 
     def _produce_sign(self, params):
-        connect_key = self.connect_key #.encode('utf-8')
-        secret_key = self.secret_key #.encode('utf-8')
-        pairName = params['pairName'] #.encode('utf-8')
-        text_str = connect_key + pairName + secret_key
+        sign_str = ''
+        sign_str += self.connect_key
+        for k in params.values():
+            sign_str += "{}" .format(k)
+        sign_str += self.secret_key
+        params['apiKey'] = self.connect_key
         md5 = hashlib.sha256()
-        md5.update(text_str.encode())
+        md5.update(sign_str.encode())
         sign = md5.hexdigest()
         return sign
 
@@ -222,33 +225,11 @@ class Foblgate(object):
                     last = float(res['data']['sell'])
                     return last
 
-    def Balance(self):
-        path = '/open/api/user/account'
-        request = {}
-        request['sign'] = self._produce_sign(request)
-        res = self.http_request('GET', path, request)
-        if not res:
-            return False
-        bal = {}
-        if isinstance(res, dict):
-            if 'data' in res:
-                if res['data']:
-                    if 'coin_list' in res['data']:
-                        if res['data']['coin_list']:
-                            for i in res['data']['coin_list']:
-                                if i['coin'] == self.target:
-                                    self.targetBalance = float(i['normal'])
-                                if i['coin'] == self.payment:
-                                    self.baseBalance = float(i['normal'])
-        return True
-
     def Orderbook(self):
         path = '/api/ticker/orderBook'
         request = {
-            'apiKey'   : self.connect_key,
             'pairName' : self.symbol,  # 币种对
         }
-        # "d9522a1c5f780757d924c393c6428b246fd9541c549ca440deadd332a1be6932"
         sign = self._produce_sign(request)
         headers = {
             'SecretHeader' : sign,
@@ -257,121 +238,172 @@ class Foblgate(object):
         if not res:
             return False
 
-        return
-
         buy_list = []
         sell_list = []
         try:
             if isinstance(res, dict):
-                if 'data' in res:
-                    if res['data']:
-                        if 'tick' in res['data']:
-                            if res['data']['tick']:
-                                if 'bids' in res['data']['tick']:
-                                    self.bids_price  = float(res['data']['tick']['bids'][0][0])
-                                    self.bids_qty    = float(res['data']['tick']['bids'][0][1])
-                                if 'asks' in res['data']['tick']:
-                                    self.asks_price  = float(res['data']['tick']['asks'][0][0])
-                                    self.asks_qty    = float(res['data']['tick']['asks'][0][1])
-                                return True
+                if 'data' in res and res['data']:
+                    if 'buyList' in res['data'] and res['data']['buyList']:
+                        self.bids_price  = float(res['data']['buyList'][0]['price'])
+                        self.bids_qty    = float(res['data']['buyList'][0]['amount'])
+                    if 'sellList' in res['data'] and res['data']['sellList']:
+                        self.asks_price  = float(res['data']['sellList'][0]['price'])
+                        self.asks_qty    = float(res['data']['sellList'][0]['amount'])
+                    return True
         except Exception as ex:
-            logger.error("Orderbook exception error %s" %ex)
+            print("Orderbook exception error %s" %ex)
+        return False
+
+    def Balance(self):
+        path = '/api/account/balance'
+        request = {
+            'mbId'   : self.mbid,  #user id
+        }
+        sign = self._produce_sign(request)
+        headers = {
+            'SecretHeader' : sign,
+        }
+        res = self.http_request('POST', path, request, headers)
+        if not res:
+            return False
+        self.targetBalance = self.baseBalance = 0
+        if isinstance(res, dict):
+            if 'data' in res and res['data']:
+                if 'avail' in res['data'] and res['data']['avail']:
+                    coins = res['data']['avail']
+                    self.targetBalance = float(int(coins.get(self.target, 0)))
+                    self.baseBalance   = float(int(coins.get(self.payment, 0)))
+                    return True
 
         return False
 
     def Order(self, price, amount, side):
-        path =  '/open/api/create_order'
+        path =  '/api/trade/orderPlace'
         request = {
-            "side": side.upper(),  # buy or sell
-            "type": 1,  # limit order
-            "volume": amount,  # type=1 Represents the quantity of sales and purchases
-            "price": price,  # type=1
-            "symbol": self.symbol,
-            "fee_is_user_exchange_coin": 0
+            'mbId'   : self.mbid,  #user id
+            'pairName' : self.symbol,
+            'action' : 'ask' if side == 'SELL' else 'bid',
+            'price'  : '%g' %price,
+            'amount' : '%g' %amount,
         }
-        request['sign'] = self._produce_sign(request)
-        content = self.http_request('POST', path, request)
+        sign = self._produce_sign(request)
+        headers = {
+            'SecretHeader' : sign,
+        }
+        content = self.http_request('POST', path, request, headers)
         if not content:
             return 'ERROR', 0, content
 
         order_id = 0
         status = 'ERROR'
-        if 'code' in content:
-            status = 'OK' if content['code'] == '0' else 'ERROR'
-            if status == 'OK' and 'data' in content and 'order_id' in content['data']:
-                order_id = content['data']['order_id'] #string
+        if 'status' in content:
+            status = 'OK' if content['status'] == '0' else 'ERROR'
+            if status == 'OK' and 'data' in content and content['data']:
+                order_id = content['data'] #string
                 if not order_id :
                     status = 'ERROR'
                     order_id = 0
 
         return status, order_id, content
 
-    def Cancel(self, order_id):
-        path =  '/open/api/cancel_order'
+    def Cancel(self, order_id, side, price):
+        path = '/api/trade/orderCancel'
         request = {
-            "order_id": order_id,
-            "symbol": self.symbol
+            'mbId': self.mbid,  # user id
+            'pairName': self.symbol,
+            'ordNo': order_id,
+            'action' : 'ask' if side == 'SELL' or 'ask' else 'bid',
+            'ordPrice' : '%g' %price,
         }
-        request['sign'] = self._produce_sign(request)
-        res =   self.http_request('POST', path, request)
+        sign = self._produce_sign(request)
+        headers = {
+            'SecretHeader': sign,
+        }
+        res = self.http_request('POST', path, request, headers)
         return res
 
-    '''
-    "order_info":{
-        "id":343,
-        "side":"sell",
-        "side_msg":"Sell out",
-        "created_at":"09-22 12:22",
-        "price":222.33,
-        "volume":222.33,
-        "deal_volume":222.33,
-        "total_price":222.33,
-        "fee":222.33,
-        "avg_price":222.33}
-    }
-    '''
-
-    def Order_info(self, order_id):
-        path =  '/open/api/order_info'
+    def Order_info(self, side, cnt=20, skipIdx=0):
+        '''
+        주문체결 내역만 존재함.
+        '''
+        path =  '/api/account/signHistory'
         request = {
-            "order_id": order_id,
-            "symbol": self.symbol
+            'mbId': self.mbid,  # user id
+            'pairName': self.symbol,
+            'action' : 'ask' if side == 'SELL' or 'ask' else 'bid',
+            'cnt' : str(cnt),         #Int	Number of result to fetch
+            'skipIdx' : str(skipIdx)  #String	Number of skip count
         }
-        request['sign'] = self._produce_sign(request)
-        res =   self.http_request('GET', path, request)
+        sign = self._produce_sign(request)
+        headers = {
+            'SecretHeader': sign,
+        }
+        res = self.http_request('POST', path, request, headers)
         if not res:
             return False
 
-        if isinstance(res, dict):
-            return res
+        return res
 
-    def review_order(self, order_id, _qty):
+    def _Order_info(self, side, cnt=20, skipIdx=0):
+        '''
+        모든 주문 내역이 존재함.   주문 체결 여부는 알 수 없음.
+        '''
+        path =  '/api/account/orderHistory'
+        request = {
+            'mbId': self.mbid,  # user id
+            'pairName': self.symbol,
+            'action' : 'ask' if side == 'SELL' or 'ask' else 'bid',
+            'cnt' : str(cnt),         #Int	Number of result to fetch
+            'skipIdx' : str(skipIdx)  #String	Number of skip count
+        }
+        sign = self._produce_sign(request)
+        headers = {
+            'SecretHeader': sign,
+        }
+        res = self.http_request('POST', path, request, headers)
+        if not res:
+            return False
+
+        return res
+
+    def review_order(self, order_id, _qty, side=None):
         units_traded = 0
+        resp = None
+        find = False
+        units_traded = 0
+
         try:
-            resp = self.Order_info(order_id)
-            if 'code' in resp and resp['code'] == '0':
-                if 'data' in resp and 'order_info' in resp['data'] :
-                    if isinstance(resp['data']['order_info'], dict):
-                        units_traded = float(resp['data']['order_info']['deal_volume'])
-                        qty = float(resp['data']['order_info']['volume'])
-                        avg_price = float(resp['data']['order_info']['avg_price'])
-                        fee = float(resp['data']['order_info']['fee'])
-                        if units_traded == 0:   # unfilled
-                            return "GO", units_traded, avg_price, fee
-                        elif units_traded < qty : #partially filled
-                            print("units_traded %.4f" % units_traded)
-                            return "NG", units_traded, avg_price, fee
-                        else:  # filled or canceled
-                            return "SKIP", units_traded, avg_price, fee
-                    else:
-                        # response error {'code': '0', 'msg': 'suc', 'data': {'trade_list': None, 'order_info': None}}
-                        # it might be caused from not yet recorded
-                        print('response error %s' % resp)
-                        logger.debug("response error %s" % resp)
-                        return "GO", 0, 0, 0
+            side = 'ask' if side == 'SELL' or 'ask' else 'bid'
+            resp = self.Order_info(side)
+            if 'status' in resp and resp['status'] == '0':
+                if 'data' in resp and resp['data'] :
+                    if 'list' in resp['data'] and resp['data']['list']:
+                        orders = resp['data']['list']
+                        if len(orders):
+                            orders = sorted(orders, key=itemgetter('ordDt'), reverse=True)
+                            for o in orders:
+                                if str(o['ordNo']) == order_id:  # find it !
+                                    find = True
+                                    units_traded += float(o['signAmount'])
+                                    avg_price = float(o['signPrice'])
+                                    fee = float(o['fee'])
+
+                            if find:
+                                if units_traded == 0:   # unfilled
+                                    return "GO", units_traded, avg_price, fee
+                                elif units_traded < _qty : #partially filled
+                                    print("units_traded %.4f" % units_traded)
+                                    return "NG", units_traded, avg_price, fee
+                                else:  # filled or canceled
+                                    return "SKIP", units_traded, avg_price, fee
+
+                            if not find:
+                                logger.debug("it must be pending order")
+                                return "GO", 0, 0, 0
 
             logger.debug("response error %s" % resp)
             return "SKIP", 0, 0, 0
+
         except Exception as ex:
             logger.debug("Exception error in review order {}-{}" .format(resp, ex))
             return "SKIP", 0, 0, 0
